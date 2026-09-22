@@ -138,6 +138,8 @@ func ruleWidth(columns int) int {
 	return w
 }
 
+const windowTagWidth = 5
+
 func padEnd(s string, n int) string {
 	for utf8.RuneCountInString(s) < n {
 		s += " "
@@ -146,7 +148,7 @@ func padEnd(s string, n int) string {
 }
 
 func windowLine(w *LimitWindow, tag string, layout PanelLayout, nowMs int64) string {
-	tagCol := padEnd(tag, 3)
+	tagCol := padEnd(tag, windowTagWidth)
 	if w == nil {
 		track := bar.Dim(strings.Repeat("░", barWidth(layout.Columns)), layout.Color)
 		return "  " + tagCol + "  " + track + "   " + bar.Dim("—", layout.Color)
@@ -390,7 +392,7 @@ func richBlock(p ProviderLimits, layout PanelLayout, withExtras bool, nowMs int6
 		}
 	}
 
-	hasAny := p.Primary != nil || p.Secondary != nil || p.Tertiary != nil
+	hasAny := p.Primary != nil || p.Secondary != nil || p.Tertiary != nil || p.Fable != nil
 	if !hasAny {
 		pushWindow(nil, primaryTag)
 		pushWindow(nil, secondaryTag)
@@ -400,6 +402,9 @@ func richBlock(p ProviderLimits, layout PanelLayout, withExtras bool, nowMs int6
 		}
 		if p.Secondary != nil {
 			pushWindow(p.Secondary, secondaryTag)
+		}
+		if p.Fable != nil {
+			pushWindow(p.Fable, "Fable")
 		}
 		if p.Tertiary != nil {
 			pushWindow(p.Tertiary, tertiaryTag)
@@ -426,6 +431,9 @@ func compactLine(p ProviderLimits, layout PanelLayout) string {
 	}
 	if p.Secondary != nil {
 		windows = append(windows, inlineWindow(p.Secondary, windowTag(p.Secondary, "7d"), layout))
+	}
+	if p.Fable != nil {
+		windows = append(windows, inlineWindow(p.Fable, "Fable", layout))
 	}
 	if p.Tertiary != nil {
 		windows = append(windows, inlineWindow(p.Tertiary, windowTag(p.Tertiary, "30d"), layout))

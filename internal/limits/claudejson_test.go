@@ -6,6 +6,7 @@ package limits
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,6 +55,57 @@ func TestProviderLimitsFromClaudeJSON(t *testing.T) {
 	}
 	if ProviderLimitsFromClaudeJSON("{}", 0) != nil {
 		t.Fatal("expected nil")
+	}
+}
+
+func TestProviderLimitsFromClaudeJSON_FableWeeklyScoped(t *testing.T) {
+	// Observed ~/.claude.json shape: limits[] weekly_scoped names the model
+	// in scope.model.display_name and reports percent already on 0-100.
+	// scope.model.id is null. A Sonnet-scoped row must not be labeled Fable.
+	raw, _ := json.Marshal(map[string]any{
+		"cachedUsageUtilization": map[string]any{
+			"fetchedAtMs": 1_700_000_000_000,
+			"utilization": map[string]any{
+				"five_hour": map[string]any{"utilization": 10, "resets_at": "2026-07-15T16:00:00.000Z"},
+				"seven_day": map[string]any{"utilization": 50, "resets_at": "2026-07-20T00:00:00.000Z"},
+				"limits": []any{
+					map[string]any{
+						"kind": "weekly_scoped", "percent": 6,
+						"resets_at": "2026-09-24T12:00:00.199350+00:00",
+						"scope":     map[string]any{"model": map[string]any{"id": nil, "display_name": "Fable"}},
+					},
+					map[string]any{
+						"kind": "weekly_scoped", "percent": 90,
+						"resets_at": "2026-09-24T12:00:00.199350+00:00",
+						"scope":     map[string]any{"model": map[string]any{"display_name": "Sonnet"}},
+					},
+				},
+			},
+		},
+	})
+	result := ProviderLimitsFromClaudeJSON(string(raw), 1_700_000_000_000)
+	if result == nil || result.Fable == nil {
+		t.Fatalf("fable window missing: %+v", result)
+	}
+	if result.Fable.UsedPercentage != 6 {
+		t.Fatalf("fable used = %v, want 6", result.Fable.UsedPercentage)
+	}
+	if result.Fable.WindowMinutes == nil || *result.Fable.WindowMinutes != 10080 {
+		t.Fatalf("fable window minutes = %v, want 10080", result.Fable.WindowMinutes)
+	}
+	wantReset := time.Date(2026, 9, 24, 12, 0, 0, 199350000, time.UTC).Unix()
+	if result.Fable.ResetsAt == nil || *result.Fable.ResetsAt != wantReset {
+		t.Fatalf("fable resetsAt = %v, want %d", result.Fable.ResetsAt, wantReset)
+	}
+	if result.Primary == nil || result.Primary.UsedPercentage != 10 || result.Secondary == nil || result.Secondary.UsedPercentage != 50 {
+		t.Fatalf("shared windows changed: %+v", result)
+	}
+	text := FormatProviderBlock(*result, wide, 1_700_000_000_000)
+	if !strings.Contains(text, "Fable") || strings.Contains(text, "Sonnet") {
+		t.Fatalf("panel = %q, want a Fable row and no Sonnet row", text)
+	}
+	if !strings.Contains(text, "94% left") {
+		t.Fatalf("panel = %q, want 94%% left", text)
 	}
 }
 

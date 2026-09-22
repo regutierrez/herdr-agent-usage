@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/senna-lang/herdr-agent-usage/internal/planlabels"
@@ -16,6 +17,35 @@ import (
 type utilizationWindow struct {
 	Utilization *float64 `json:"utilization"`
 	ResetsAt    *string  `json:"resets_at"`
+}
+
+// scopedLimit is one entry in cachedUsageUtilization.utilization.limits.
+// Claude Code records the model-scoped weekly allowance here. percent is
+// already 0-100, unlike utilization which is the same scale on five_hour.
+type scopedLimit struct {
+	Kind     string   `json:"kind"`
+	Percent  *float64 `json:"percent"`
+	ResetsAt *string  `json:"resets_at"`
+	Scope    *struct {
+		Model *struct {
+			DisplayName *string `json:"display_name"`
+		} `json:"model"`
+	} `json:"scope"`
+}
+
+// fableWindowFromLimits returns the weekly_scoped row whose model display
+// name is Fable. Other scoped rows, including a null model id, are ignored.
+func fableWindowFromLimits(limits []scopedLimit) *LimitWindow {
+	for _, limit := range limits {
+		if limit.Kind != "weekly_scoped" || limit.Scope == nil || limit.Scope.Model == nil || limit.Scope.Model.DisplayName == nil {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(*limit.Scope.Model.DisplayName), "Fable") {
+			continue
+		}
+		return WindowFromUtilization(limit.Percent, limit.ResetsAt, 10080)
+	}
+	return nil
 }
 
 // ResolveClaudeJSONPath returns CLAUDE_CONFIG_JSON or ~/.claude.json.
@@ -64,6 +94,7 @@ func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 			Utilization *struct {
 				FiveHour *utilizationWindow `json:"five_hour"`
 				SevenDay *utilizationWindow `json:"seven_day"`
+				Limits   []scopedLimit      `json:"limits"`
 			} `json:"utilization"`
 		} `json:"cachedUsageUtilization"`
 		OAuthAccount *struct {
@@ -82,14 +113,15 @@ func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 	if cache == nil || cache.Utilization == nil {
 		return nil
 	}
-	var primary, secondary *LimitWindow
+	var primary, secondary, fable *LimitWindow
 	if cache.Utilization.FiveHour != nil {
 		primary = WindowFromUtilization(cache.Utilization.FiveHour.Utilization, cache.Utilization.FiveHour.ResetsAt, 300)
 	}
 	if cache.Utilization.SevenDay != nil {
 		secondary = WindowFromUtilization(cache.Utilization.SevenDay.Utilization, cache.Utilization.SevenDay.ResetsAt, 10080)
 	}
-	if primary == nil && secondary == nil {
+	fable = fableWindowFromLimits(cache.Utilization.Limits)
+	if primary == nil && secondary == nil && fable == nil {
 		return nil
 	}
 
@@ -123,6 +155,7 @@ func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 		Label:       "Claude",
 		Primary:     primary,
 		Secondary:   secondary,
+		Fable:       fable,
 		PlanType:    plan,
 		Source:      "claude.json cachedUsageUtilization",
 		FetchedAtMs: fetchedAtMs,

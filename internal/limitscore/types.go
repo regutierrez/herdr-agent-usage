@@ -41,7 +41,10 @@ type ProviderLimits struct {
 	// Secondary is the mid window (weekly).
 	Secondary *LimitWindow
 	// Tertiary is the long window (monthly). OpenCode Go etc.
-	Tertiary    *LimitWindow
+	Tertiary *LimitWindow
+	// Fable is Claude's model-scoped weekly allowance. It is a second weekly
+	// bucket, not a longer plan window, so it does not share Tertiary.
+	Fable       *LimitWindow
 	PlanType    *string
 	Source      string
 	FetchedAtMs int64

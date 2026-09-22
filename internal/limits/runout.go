@@ -44,6 +44,7 @@ const (
 	kindPrimary   windowKind = "primary"
 	kindSecondary windowKind = "secondary"
 	kindTertiary  windowKind = "tertiary"
+	kindFable     windowKind = "fable"
 )
 
 func keyFor(providerID string, kind windowKind) string {
@@ -137,6 +138,7 @@ func EnrichRunOut(
 		next.Primary = withRunOut(p.ProviderID, kindPrimary, p.Primary)
 		next.Secondary = withRunOut(p.ProviderID, kindSecondary, p.Secondary)
 		next.Tertiary = withRunOut(p.ProviderID, kindTertiary, p.Tertiary)
+		next.Fable = withRunOut(p.ProviderID, kindFable, p.Fable)
 		nextProviders[i] = next
 	}
 
