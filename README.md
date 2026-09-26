@@ -110,7 +110,7 @@ herdr plugin action invoke usagebar.setup
 | **Sidebar `$cache_*` row** | Session-cumulative prompt-cache hit rate (`cache hit 93.3%`), plus remaining TTL only from a recorded expiry. ⚠️ when that TTL has already elapsed. Exactly one of `$cache_high` / `$cache_mid` / `$cache_low` is set. High uses the default sidebar color; mid/low are yellow/red in `config.toml` |
 | **Sidebar `$limit` row** | Shortest provider limit window (`5h 72%` remaining), refreshed with the Agent Usage pane (15s) or every 60s while that pane is closed. Pay-as-you-go panes show what that pane spent on its backend (`Σ 425k $0.04`, scoped to the pane's session and backend) instead |
 | **Sidebar `$provider` row** | Subscription provider (`opencode-go`, `grok`, `claude`, …) on a subscription pane, or the backend actually billed on a pay-as-you-go pane (`deepseek`). The adjacent burn total is scoped to that same backend in the pane's session |
-| **Agent Usage pane** | One block per billing provider, independent of harness. Subscription providers show plan windows and cross-harness pane activity. Pay-as-you-go backends show one merged 24h / 7d / 30d block, model breakdown, and pane share even when multiple harnesses use the same backend. Prompt-cache data stays sidebar-only, except red-band panes (<50% session hit rate), which produce a `⚠ low cache performance` warning |
+| **Agent Usage pane** | One block per billing provider, independent of harness. Subscription providers show plan windows and cross-harness pane activity. Pay-as-you-go backends show one merged 24h / 7d / 30d block, model breakdown, and pane share even when multiple harnesses use the same backend. Prompt-cache data stays sidebar-only, except red-band panes (<50% session hit rate), which produce a `⚠ cache: <repo> (<agent>) only N% cached` warning in the footer |
 | **Toasts** (optional) | Remaining-limit warnings at configured thresholds (default 50 / 20 / 10 / 5 % left) |
 
 ### Supported agents
@@ -136,7 +136,9 @@ to hide cache data from both the sidebar and Agent Usage pane.
 
 - Auto-refreshes every **15s**. The pane shows a subscription collector when that harness is installed and signed in, not only when one of its panes is open. Each row names the harness that holds the login (`via pi`, `via claude`). A collector whose auth file is missing is omitted. A Pi login is read live with its saved OAuth token; a Pi or OMP login without a quota reading stays visible with a note saying why (expired token, failed request, no snapshot); its quota is not guessed. A login that does not map to a collector (for example Copilot or Gemini inside Pi) is omitted rather than shown as a guessed window or as API spend. `--all` still lists every collector. The pane tick updates sidebar `$limit` on open subscription panes and `$cache_*` on every open agent pane. Press **`r`** to refresh, **`q`** to quit. With the pane closed, `$limit` and `$cache_*` still refresh every **60s**. `$context` stays event-driven after the initial restore. After a Herdr restart or live handoff, a `[[startup]]` hook republishes `$title` / `$provider` / `$limit` / `$cache_*` / `$context` for every open agent pane so the sidebar is not blank until the next focus or turn.
 - OpenCode Go may show three windows (**5h / 7d / 30d**). Other providers show whichever usage windows their data sources make available.
-- Open pane **token share** is local activity share within the shortest window (including a **closed / other** bucket for usage outside open panes). It is not account quota attribution.
+- Open pane **token share** is local activity share within the shortest window, e.g. `open panes used 2.8% of last 7d: chezmoi 2.6%, henry 0.2%`. Panes are named by the directory they run in (plus the agent when two panes share one), and the rest of the usage (closed sessions, other harnesses) is what the total leaves out. It is not account quota attribution.
+- A window line ends with its countdown (`resets in 4d 22h`). When the recent pace would use a window up first, a warning follows, worded against the reset: `at this pace you'll use it all by the reset`, or `at this pace it runs out in ~2d 0h, 3d 0h before the reset`.
+- A row with no windows shows only its reason (``no data: pi login expired — run `pi auth check --provider xai` ``), wrapped to at most two lines.
 - Sidebar values ordinarily update after the agent has **settled** (not while `working`), so they match the last completed turn. `$cache_*` also refreshes on the periodic path to keep an evidence-backed TTL current. If the session cannot be resolved, the `$context` and `$cache_*` tokens are cleared rather than showing another session’s numbers.
 - After a Claude Code **compaction**, the meter shows `⛁ compacted (14k)` — the boundary’s own post-compaction estimate — instead of the stale pre-compact size, until the next completed turn reports real usage again. Its cache row clears until post-compaction cache counters exist.
 
@@ -493,8 +495,9 @@ Grok's `config.toml`, OMP/Pi `message.provider`). No extra data sources; the
 only network calls are the authenticated provider usage fetches (Claude, Codex
 and Grok usage, OpenCode Go usage), and each one is skipped when its credential
 is absent. A token is sent only to the vendor that issued it, is never
-refreshed (an expired Pi token is reported as `pi login expired — open pi to
-refresh it`), and is never written to disk. Each account is requested at most once per five
+refreshed (an expired Pi token is reported as ``pi login expired — run `pi auth
+check --provider <id>` ``, which refreshes it through Pi), and is never
+written to disk. Each account is requested at most once per five
 minutes, failures included; only the resulting windows are cached, in
 `~/.claude/herdr-usagebar/usage-api-cache.json`. On macOS Claude Code keeps
 its token in the Keychain, which is not read, so Claude falls back to the

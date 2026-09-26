@@ -64,6 +64,14 @@ func remainingOf(used float64) int {
 	return int(math.Max(0, math.Min(100, math.Round(100-used))))
 }
 
+// resetsInText is the countdown shown after a window's percentage.
+func resetsInText(ms int64) string {
+	if ms <= 0 {
+		return "resets now"
+	}
+	return "resets in " + formatResetIn(ms)
+}
+
 func formatResetIn(ms int64) string {
 	if ms <= 0 {
 		return "soon"
@@ -163,7 +171,7 @@ func windowLine(w *LimitWindow, tag string, layout PanelLayout, nowMs int64) str
 	pct := bar.Colorize(fmt.Sprintf("%3d%% %s", layout.LimitPercent.DisplayPercent(rem), word), tone, layout.Color)
 	line := "  " + tagCol + "  " + barStr + "   " + pct
 	if w.ResetsAt != nil && *w.ResetsAt > 0 {
-		hint := formatResetIn(*w.ResetsAt*1000 - nowMs)
+		hint := resetsInText(*w.ResetsAt*1000 - nowMs)
 		tail := "    " + hint
 		if plainWidth(line)+utf8.RuneCountInString(tail) <= layout.Columns-1 {
 			line += "    " + bar.Dim(hint, layout.Color)
@@ -172,12 +180,37 @@ func windowLine(w *LimitWindow, tag string, layout PanelLayout, nowMs int64) str
 	return line
 }
 
-func runOutLine(w *LimitWindow, layout PanelLayout) string {
+// runOutLine warns when the recent pace would use a window up before it
+// resets. It is worded against the reset, because a bare "empty in ~4d 23h"
+// next to a "resets in 4d 23h" countdown reads as a duplicate: when the two
+// nearly coincide the warning says so, otherwise it says how much earlier.
+func runOutLine(w *LimitWindow, layout PanelLayout, nowMs int64) string {
 	if w == nil || w.RunOut == nil || !w.RunOut.EmptyBeforeReset {
 		return ""
 	}
-	dur := formatShortDuration(w.RunOut.MinutesToEmpty)
-	return "      " + bar.Colorize("⚠ empty in ~"+dur, bar.ToneLow, layout.Color)
+	// The 6-column indent is 4 wider than the "  " truncatePanelText allows for.
+	text := truncatePanelText("⚠ "+runOutText(w, nowMs), layout.Columns-4)
+	return "      " + bar.Colorize(text, bar.ToneLow, layout.Color)
+}
+
+// runOutNearResetFraction: a projected empty time within this fraction of
+// the time left until reset (or within an hour) counts as "by the reset".
+const runOutNearResetFraction = 0.05
+
+func runOutText(w *LimitWindow, nowMs int64) string {
+	toEmpty := w.RunOut.MinutesToEmpty
+	if toEmpty <= 0 {
+		return "used up at this pace"
+	}
+	if w.ResetsAt == nil {
+		return "at this pace it runs out in ~" + formatShortDuration(toEmpty)
+	}
+	toReset := float64(*w.ResetsAt*1000-nowMs) / 60_000
+	early := toReset - toEmpty
+	if early <= math.Max(60, toReset*runOutNearResetFraction) {
+		return "at this pace you'll use it all by the reset"
+	}
+	return "at this pace it runs out in ~" + formatShortDuration(toEmpty) + ", " + formatShortDuration(early) + " before the reset"
 }
 
 func formatShortDuration(minutes float64) string {
@@ -212,38 +245,82 @@ func inlineWindow(w *LimitWindow, tag string, layout PanelLayout) string {
 	return tag + " " + barStr + " " + pct + warn
 }
 
+// paneActivityLine says how much of the provider's recent use came from the
+// panes open in Herdr, then lists them: "open panes used 3% of last 7d:
+// chezmoi 2.6%, henry 0.2%, +1". Leading with the total makes the rest (closed
+// sessions, other harnesses) implied instead of hidden behind a "+1".
 func paneActivityLine(activity ProviderPaneActivity, layout PanelLayout) string {
-	if len(activity.Panes) == 0 {
+	var open []PaneActivityShare
+	openTotal := 0.0
+	for _, pane := range activity.Panes {
+		if pane.PaneID == OtherPaneID {
+			continue
+		}
+		open = append(open, pane)
+		openTotal += pane.SharePercent
+	}
+	if len(open) == 0 {
 		return ""
 	}
-	tag := minutesTag(activity.WindowMinutes)
-	labelText := tag + " share"
-	prefix := 1 + 2 + len(labelText) + 2
-	budget := int(math.Max(8, float64(layout.Columns)-float64(prefix)-3))
+	lead := "open panes used " + shareText(math.Min(100, openTotal)) + "% of last " + minutesTag(activity.WindowMinutes) + ": "
+	// Same budget as truncatePanelText; on a pane too narrow for the lead the
+	// whole line is truncated instead.
+	budget := max(layout.Columns-3-utf8.RuneCountInString(lead), 8)
 	var parts []string
 	used := 0
-	shown := 0
-	for _, pane := range activity.Panes {
+	for _, pane := range open {
 		piece := pane.Label + " " + shareText(pane.SharePercent) + "%"
-		add := 0
+		add := utf8.RuneCountInString(piece)
 		if len(parts) > 0 {
-			add = 3
+			add += 2
 		}
-		add += len(piece)
-		if used+add > budget && shown > 0 {
+		// Reserve room for the ", +N" tail whenever something is left over.
+		tailRoom := 0
+		if len(parts)+1 < len(open) {
+			tailRoom = 4
+		}
+		if used+add+tailRoom > budget && len(parts) > 0 {
 			break
 		}
 		parts = append(parts, piece)
 		used += add
-		shown++
 	}
-	overflow := len(activity.Panes) - shown
-	tail := ""
-	if overflow > 0 {
-		tail = fmt.Sprintf(" +%d", overflow)
+	text := strings.Join(parts, ", ")
+	if overflow := len(open) - len(parts); overflow > 0 {
+		text += fmt.Sprintf(", +%d", overflow)
 	}
-	label := bar.Dim(labelText, layout.Color)
-	return "  " + label + "  " + strings.Join(parts, " · ") + tail
+	return "  " + bar.Dim(truncatePanelText(lead+text, layout.Columns), layout.Color)
+}
+
+// noDataLines explains a row without windows, wrapped to at most two lines.
+func noDataLines(note *string, layout PanelLayout) []string {
+	reason := "no data yet"
+	if note != nil && *note != "" {
+		reason = "no data: " + *note
+	}
+	wrapped := wrapPanelText(reason, layout.Columns, 2)
+	for i := range wrapped {
+		wrapped[i] = "  " + bar.Dim(wrapped[i], layout.Color)
+	}
+	return wrapped
+}
+
+// wrapPanelText splits text at spaces into at most maxLines lines that fit
+// the same budget as truncatePanelText; the last line is truncated.
+func wrapPanelText(text string, columns, maxLines int) []string {
+	budget := max(columns-3, 8)
+	var lines []string
+	rest := text
+	for len(lines) < maxLines-1 && utf8.RuneCountInString(rest) > budget {
+		runes := []rune(rest)
+		cut := strings.LastIndex(string(runes[:budget+1]), " ")
+		if cut <= 0 {
+			break
+		}
+		lines = append(lines, rest[:cut])
+		rest = strings.TrimLeft(rest[cut:], " ")
+	}
+	return append(lines, truncatePanelText(rest, columns))
 }
 
 // noteLine renders p.Note (stale-cache warnings, account identity, spend
@@ -257,19 +334,25 @@ func noteLine(note *string, layout PanelLayout) string {
 }
 
 // lowCacheWarningLine renders the only cache diagnostic in Agent Usage: panes
-// that have a red-band session hit rate. A single line preserves the panel's
-// provider-first layout and is always included in the row budget.
+// whose session prompt-cache hit rate is in the red band. It sits in the
+// footer, below the rule, because it is about a pane, not about the provider
+// block printed last. It says what the number costs: an uncached turn
+// re-sends the whole context as fresh input.
 func lowCacheWarningLine(panes []LowCachePane, layout PanelLayout) string {
 	if len(panes) == 0 {
 		return ""
 	}
-
-	parts := make([]string, 0, len(panes))
-	for _, pane := range panes {
-		parts = append(parts, fmt.Sprintf("%s %.1f%%", pane.Label, pane.HitPercent))
+	var text string
+	if len(panes) == 1 {
+		text = fmt.Sprintf("⚠ cache: %s only %.0f%% cached — each turn re-sends context", panes[0].Label, panes[0].HitPercent)
+	} else {
+		parts := make([]string, 0, len(panes))
+		for _, pane := range panes {
+			parts = append(parts, fmt.Sprintf("%s %.0f%%", pane.Label, pane.HitPercent))
+		}
+		text = "⚠ cache: " + strings.Join(parts, ", ") + " cached — turns re-send context"
 	}
-	text := truncatePanelText("⚠ low cache performance: "+strings.Join(parts, ", "), layout.Columns)
-	return "  " + bar.Colorize(text, bar.ToneLow, layout.Color)
+	return bar.Colorize(truncatePanelText(text, layout.Columns), bar.ToneLow, layout.Color)
 }
 
 func truncatePanelText(text string, columns int) string {
@@ -394,28 +477,28 @@ func richBlock(p ProviderLimits, layout PanelLayout, withExtras bool, nowMs int6
 
 	pushWindow := func(w *LimitWindow, tag string) {
 		lines = append(lines, windowLine(w, tag, layout, nowMs))
-		if warn := runOutLine(w, layout); warn != "" {
+		if warn := runOutLine(w, layout, nowMs); warn != "" {
 			lines = append(lines, warn)
 		}
 	}
 
-	hasAny := p.Primary != nil || p.Secondary != nil || p.Tertiary != nil || p.Fable != nil
-	if !hasAny {
-		pushWindow(nil, primaryTag)
-		pushWindow(nil, secondaryTag)
-	} else {
-		if p.Primary != nil {
-			pushWindow(p.Primary, primaryTag)
-		}
-		if p.Secondary != nil {
-			pushWindow(p.Secondary, secondaryTag)
-		}
-		if p.Fable != nil {
-			pushWindow(p.Fable, "Fable")
-		}
-		if p.Tertiary != nil {
-			pushWindow(p.Tertiary, tertiaryTag)
-		}
+	if !hasAnyWindow(p) {
+		// Empty bars carry no information; the reason is the only content,
+		// so it is shown in every tier and may use the two rows the bars
+		// would have taken.
+		return append(lines, noDataLines(p.Note, layout)...)
+	}
+	if p.Primary != nil {
+		pushWindow(p.Primary, primaryTag)
+	}
+	if p.Secondary != nil {
+		pushWindow(p.Secondary, secondaryTag)
+	}
+	if p.Fable != nil {
+		pushWindow(p.Fable, "Fable")
+	}
+	if p.Tertiary != nil {
+		pushWindow(p.Tertiary, tertiaryTag)
 	}
 	if withExtras && p.PaneActivity != nil {
 		if paneLine := paneActivityLine(*p.PaneActivity, layout); paneLine != "" {
@@ -506,11 +589,7 @@ func FormatUsagePanel(providers []ProviderLimits, apiUsage []APIProviderUsage, n
 		if empty == "" {
 			empty = "(no usage data yet)"
 		}
-		lines := []string{"", empty}
-		if warning != "" {
-			lines = append(lines, warning)
-		}
-		lines = append(lines, "", rule, footer, "")
+		lines := append([]string{"", empty, "", rule}, footerLines(warning, footer)...)
 		return strings.Join(indent(lines), "\n")
 	}
 
@@ -527,12 +606,17 @@ func FormatUsagePanel(providers []ProviderLimits, apiUsage []APIProviderUsage, n
 	chrome := 5 + warningRows
 	bodyBudget := int(math.Max(1, float64(layout.Rows)-float64(chrome)))
 	body := renderBody(blocks, layout, bodyBudget)
-	lines := []string{"", body}
-	if warning != "" {
-		lines = append(lines, warning)
-	}
-	lines = append(lines, "", rule, footer, "")
+	lines := append([]string{"", body, "", rule}, footerLines(warning, footer)...)
 	return strings.Join(indent(lines), "\n")
+}
+
+// footerLines is everything below the rule: the pane-level cache warning
+// when there is one, then the update/keys line, then a blank last row.
+func footerLines(warning, footer string) []string {
+	if warning == "" {
+		return []string{footer, ""}
+	}
+	return []string{warning, footer, ""}
 }
 
 func fittingFooter(timeStr string, width int) string {

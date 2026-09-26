@@ -29,6 +29,9 @@ type SubscriptionToken struct {
 	AccountID string
 	// ExpiresAtMs is the access token expiry in epoch ms. 0 means unknown.
 	ExpiresAtMs int64
+	// RefreshCommand, when set, is the command that makes the owning harness
+	// refresh this login itself. Empty means "open the harness".
+	RefreshCommand string
 }
 
 // Expired reports whether the token is known to be past its expiry. A token
@@ -58,6 +61,9 @@ func routedSubscriptionToken(collectorID string) *SubscriptionToken {
 			AccessToken: cred.AccessToken,
 			AccountID:   cred.AccountID,
 			ExpiresAtMs: cred.ExpiresAtMs,
+			// Pi refreshes an expired OAuth login on `auth check` without
+			// sending a prompt; the provider id is Pi's own name for it.
+			RefreshCommand: "pi auth check --provider " + cred.Provider,
 		}
 	}
 	return nil
@@ -67,6 +73,9 @@ func routedSubscriptionToken(collectorID string) *SubscriptionToken {
 // expired. It stays visible so the login is not silently dropped.
 func expiredTokenRow(providerID, label string, token SubscriptionToken, nowMs int64) ProviderLimits {
 	note := token.Harness + " login expired — open " + token.Harness + " to refresh it"
+	if token.RefreshCommand != "" {
+		note = token.Harness + " login expired — run `" + token.RefreshCommand + "`"
+	}
 	return ProviderLimits{
 		ProviderID:  providerID,
 		Label:       label,

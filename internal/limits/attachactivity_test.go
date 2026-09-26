@@ -4,6 +4,7 @@
 package limits
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -44,8 +45,8 @@ func TestAttachPaneActivity_Shares(t *testing.T) {
 		t.Fatalf("activity=%+v", a)
 	}
 	want := []PaneActivityShare{
-		{PaneID: "w1:p1", Label: "claude-a", Tokens: 75, SharePercent: 75},
-		{PaneID: "w1:p2", Label: "claude-b", Tokens: 25, SharePercent: 25},
+		{PaneID: "w1:p1", Label: "a", Tokens: 75, SharePercent: 75},
+		{PaneID: "w1:p2", Label: "b", Tokens: 25, SharePercent: 25},
 	}
 	if !reflect.DeepEqual(a.Panes, want) {
 		t.Fatalf("panes=%#v want %#v", a.Panes, want)
@@ -65,7 +66,7 @@ func TestAttachPaneActivity_ClosedOther(t *testing.T) {
 		t.Fatalf("activity=%+v", a)
 	}
 	want := []PaneActivityShare{
-		{PaneID: "w1:p1", Label: "claude-a", Tokens: 50, SharePercent: 25},
+		{PaneID: "w1:p1", Label: "a", Tokens: 50, SharePercent: 25},
 		{PaneID: OtherPaneID, Label: OtherLabel, Tokens: 150, SharePercent: 75},
 	}
 	if !reflect.DeepEqual(a.Panes, want) {
@@ -76,7 +77,7 @@ func TestAttachPaneActivity_ClosedOther(t *testing.T) {
 func TestAttachPaneActivity_Disambiguate(t *testing.T) {
 	open := []OpenPaneSnapshot{
 		{PaneID: "w6:p1", Agent: "claude", Label: "claude", SessionID: strP("s1"), Cwd: strP("/tmp/a")},
-		{PaneID: "w6:pC", Agent: "claude", Label: "claude", SessionID: strP("s2"), Cwd: strP("/tmp/b")},
+		{PaneID: "w6:pC", Agent: "claude", Label: "claude", SessionID: strP("s2"), Cwd: strP("/tmp/a")},
 	}
 	result := AttachPaneActivity([]ProviderLimits{baseClaude()}, open, 1_700_000_000_000, PaneActivityDeps{
 		TokensForPane: func(_ string, pane OpenPaneSnapshot, _, _ int64) float64 {
@@ -91,7 +92,7 @@ func TestAttachPaneActivity_Disambiguate(t *testing.T) {
 	for _, p := range result[0].PaneActivity.Panes {
 		labels = append(labels, p.Label)
 	}
-	want := []string{"claude p1", "claude pC"}
+	want := []string{"a (claude) p1", "a (claude) pC"}
 	if !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels=%v want %v", labels, want)
 	}
@@ -137,3 +138,28 @@ func TestAttachPaneActivity_GroupsHarnessesBySubscriptionProvider(t *testing.T) 
 }
 
 func strP(s string) *string { return &s }
+
+func TestPaneShareLabels_RepoThenAgentThenFallback(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	panes := []OpenPaneSnapshot{
+		{PaneID: "w1:p1", Agent: "pi", Label: "2 · chezmoi › AWS SSO status", Cwd: strP("/home/u/.local/share/chezmoi")},
+		{PaneID: "w1:p2", Agent: "pi", Label: "1 · Update", Cwd: strP("/home/u/repos/henry/")},
+		{PaneID: "w1:p3", Agent: "codex", Label: "x", Cwd: strP("/home/u/repos/henry")},
+		{PaneID: "w1:p4", Agent: "claude", Label: "tab title", Cwd: nil},
+		{PaneID: "w1:p5", Agent: "claude", Label: "home tab", Cwd: strP(home)},
+	}
+	got := paneShareLabels(panes)
+	want := map[string]string{
+		"w1:p1": "chezmoi",
+		"w1:p2": "henry (pi)",
+		"w1:p3": "henry (codex)",
+		"w1:p4": "tab title",
+		"w1:p5": "~",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("labels = %v, want %v", got, want)
+	}
+}

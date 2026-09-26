@@ -4,7 +4,12 @@
  */
 package limits
 
-import "github.com/senna-lang/herdr-agent-usage/internal/providers"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/senna-lang/herdr-agent-usage/internal/providers"
+)
 
 // OpenPaneSnapshot is one open agent pane used for share aggregation.
 type OpenPaneSnapshot struct {
@@ -99,13 +104,14 @@ func AttachPaneActivity(
 		startMs := WindowStartMs(nowMs, windowMinutes)
 		endMs := nowMs
 
+		labels := paneShareLabels(panesForProvider)
 		rawRows := make([]PaneTokenRow, len(panesForProvider))
 		for j, pane := range panesForProvider {
 			tokens := 0.0
 			if deps.TokensForPane != nil {
 				tokens = deps.TokensForPane(p.ProviderID, pane, startMs, endMs)
 			}
-			rawRows[j] = PaneTokenRow{PaneID: pane.PaneID, Label: pane.Label, Tokens: tokens}
+			rawRows[j] = PaneTokenRow{PaneID: pane.PaneID, Label: labels[pane.PaneID], Tokens: tokens}
 		}
 		rows := DisambiguateLabels(rawRows)
 
@@ -127,4 +133,43 @@ func AttachPaneActivity(
 		out[i].PaneActivity = &activity
 	}
 	return out
+}
+
+// PaneRepoLabel names a pane by the directory it runs in — the repository,
+// in practice — rather than by its Herdr tab title. A tab title is a tab
+// number plus whatever the agent titled its chat ("2 · chezmoi › AWS SSO
+// status"), which does not say why the pane is listed. Falls back to the
+// pane's own label when the cwd is unknown.
+func PaneRepoLabel(pane OpenPaneSnapshot) string {
+	if pane.Cwd == nil || *pane.Cwd == "" {
+		return pane.Label
+	}
+	cwd := filepath.Clean(*pane.Cwd)
+	if home, err := os.UserHomeDir(); err == nil && cwd == filepath.Clean(home) {
+		return "~"
+	}
+	base := filepath.Base(cwd)
+	if base == "/" || base == "." {
+		return pane.Label
+	}
+	return base
+}
+
+// paneShareLabels labels each pane by its repo, adding the agent when
+// several panes share a repo ("chezmoi (pi)"). Panes still tied after that
+// are told apart by DisambiguateLabels.
+func paneShareLabels(panes []OpenPaneSnapshot) map[string]string {
+	perRepo := map[string]int{}
+	for _, pane := range panes {
+		perRepo[PaneRepoLabel(pane)]++
+	}
+	labels := make(map[string]string, len(panes))
+	for _, pane := range panes {
+		label := PaneRepoLabel(pane)
+		if perRepo[label] > 1 && pane.Agent != "" {
+			label += " (" + pane.Agent + ")"
+		}
+		labels[pane.PaneID] = label
+	}
+	return labels
 }

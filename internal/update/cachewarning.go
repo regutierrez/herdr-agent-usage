@@ -27,14 +27,14 @@ func CollectLowCachePanes(snapshots []limits.OpenPaneSnapshot) []limits.LowCache
 	return collectLowCachePanesWith(
 		snapshots,
 		herdrcli.GetPaneInfo,
-		func(snapshot limits.OpenPaneSnapshot, pane herdrcli.PaneInfo) string {
-			naming := herdrcli.GetPaneNaming(pane)
-			if label := core.ResolveSidebarTitle(
-				naming.PaneLabel, naming.TabLabel, naming.TabNumber, naming.WorkspaceLabel,
-			); label != "" {
-				return label
+		// Named by repo and agent ("henry (pi)"), the same way the share
+		// line names panes, rather than by the Herdr tab title.
+		func(snapshot limits.OpenPaneSnapshot, _ herdrcli.PaneInfo) string {
+			label := limits.PaneRepoLabel(snapshot)
+			if snapshot.Agent != "" {
+				label += " (" + snapshot.Agent + ")"
 			}
-			return snapshot.Label
+			return label
 		},
 		resolveProvider,
 		func(paneID string, pane herdrcli.PaneInfo, providerID string) *core.ContextUsage {

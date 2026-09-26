@@ -216,7 +216,7 @@ func TestPanel_ExpiredPiTokenIsReportedNotUsed(t *testing.T) {
 			t.Fatalf("%s: %d requests, want 0: an expired token must not be sent", id, n)
 		}
 		row := rowByID(t, rows, id)
-		if row.Hide || hasAnyWindow(row) || row.Note == nil || !strings.Contains(*row.Note, "pi login expired") {
+		if row.Hide || hasAnyWindow(row) || row.Note == nil || !strings.Contains(*row.Note, "pi login expired — run `pi auth check --provider ") {
 			t.Fatalf("%s row = %+v, want a visible row saying the pi token expired", id, row)
 		}
 	}
