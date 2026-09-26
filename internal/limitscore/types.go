@@ -44,8 +44,15 @@ type ProviderLimits struct {
 	Tertiary *LimitWindow
 	// Fable is Claude's model-scoped weekly allowance. It is a second weekly
 	// bucket, not a longer plan window, so it does not share Tertiary.
-	Fable       *LimitWindow
-	PlanType    *string
+	Fable    *LimitWindow
+	PlanType *string
+	// Harness is the agent that holds this login (claude, pi, omp). Empty
+	// means the collector's own CLI. Shown in the pane header so a Codex
+	// window read from Pi is not presented as the Codex CLI.
+	Harness string
+	// Hide drops the row from the pane. A routing harness with no recorded
+	// window is not a failure to display; the vendor file simply is not there.
+	Hide        bool
 	Source      string
 	FetchedAtMs int64
 	Note        *string

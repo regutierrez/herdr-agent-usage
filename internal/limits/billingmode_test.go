@@ -151,6 +151,9 @@ func TestSubscriptionRouteForProviderAuth(t *testing.T) {
 		{"openai", "api", "", false},
 		{"opencode-go", "api_key", "opencode", true},
 		{"xai-oauth", "oauth", "grok", true},
+		{"xai", "oauth", "grok", true},
+		{"xai", "api_key", "", false},
+		{"xai", "", "", false},
 		{"github-copilot", "oauth", "", false},
 	}
 	for _, c := range cases {

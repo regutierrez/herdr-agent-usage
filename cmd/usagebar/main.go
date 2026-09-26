@@ -97,8 +97,8 @@ Usage:
   usagebar startup                   Restore tokens for every open agent pane
   usagebar watch                     Idle $limit refresh while the limits pane is closed
   usagebar limits|panel              Interactive limits panel (q quit, r refresh)
-                                     Shows providers with an open agent pane;
-                                     --all shows every provider
+                                     Shows signed-in harnesses;
+                                     --all shows every collector
   usagebar limits --once [--all]     Print panel once to stdout
   usagebar notify                    Check non-Claude primary rate-limit toasts
   usagebar check-update --current-version X.Y.Z [--force] [--quiet]
@@ -248,23 +248,25 @@ type panelSnapshot struct {
 	lowCachePanes []limits.LowCachePane
 }
 
-// collectPanel gathers everything the panel shows. activeOnly hides providers
-// that have no open agent pane in Herdr (the panel default; --all overrides).
-// When the pane query fails, all subscription providers are shown (fail-open).
-func collectPanel(nowMs int64, activeOnly bool) panelSnapshot {
+// collectPanel gathers everything the panel shows. installedOnly keeps
+// collectors whose harness is signed in on this machine; --all shows every
+// collector, including ones with no local login.
+func collectPanel(nowMs int64, installedOnly bool) panelSnapshot {
 	snaps, panesOK := openPaneSnapshots()
 	opts := limits.DefaultCollectOptions()
-	if activeOnly {
-		opts.Only = limits.ActiveProviderFilter(snaps, panesOK)
-		// Subscription gate: hide providers whose open panes all run on
-		// pay-as-you-go backends (--all bypasses both filters).
+	logins := limits.InstalledLogins()
+	if installedOnly {
+		opts.Only = map[string]bool{}
+		for _, login := range logins {
+			opts.Only[login.CollectorID] = true
+		}
 		billing := limits.BillingProviderFilter(snaps, panesOK, limits.DefaultBillingDeps())
 		opts.Only = limits.IntersectFilters(opts.Only, billing)
 	}
 	opts.Attach = func(providers []limits.ProviderLimits, now int64) []limits.ProviderLimits {
 		return limits.CollectAndAttachPaneActivity(providers, snaps, now)
 	}
-	base := limits.CollectAllProviderLimits(resolveCwd(), nowMs, opts)
+	base := limits.VisibleProviderLimits(limits.ApplyLoginHarness(limits.CollectAllProviderLimits(resolveCwd(), nowMs, opts), logins))
 	hist := limits.LoadUsageHistory()
 	res := limits.EnrichRunOut(base, hist, nowMs, limits.DefaultRunOutOptions)
 	limits.SaveUsageHistory(res.History)
@@ -320,12 +322,12 @@ func paintFrame(text string) {
 
 func runLimitsPane(args []string) error {
 	once := hasFlag(args, "--once")
-	// Default: show only providers with an open agent pane; --all shows every provider.
-	activeOnly := !hasFlag(args, "--all")
+	// Default: show signed-in harnesses; --all shows every collector.
+	installedOnly := !hasFlag(args, "--all")
 	layoutFor := func() limits.PanelLayout {
 		layout := currentLayout()
-		if activeOnly {
-			layout.EmptyMessage = "(no agent panes open)"
+		if installedOnly {
+			layout.EmptyMessage = "(no signed-in harness)"
 		}
 		return layout
 	}
@@ -336,7 +338,7 @@ func runLimitsPane(args []string) error {
 	}
 	if once || !term.IsTerminal(int(os.Stdout.Fd())) {
 		nowMs := time.Now().UnixMilli()
-		snap := collectPanel(nowMs, activeOnly)
+		snap := collectPanel(nowMs, installedOnly)
 		text := formatPanel(snap, nowMs)
 		fmt.Print(text)
 		if !strings.HasSuffix(text, "\n") {
@@ -373,7 +375,7 @@ func runLimitsPane(args []string) error {
 
 	renderFull := func() {
 		nowMs := time.Now().UnixMilli()
-		cachedSnap = collectPanel(nowMs, activeOnly)
+		cachedSnap = collectPanel(nowMs, installedOnly)
 		cachedLoaded = true
 		cachedNowMs = nowMs
 		update.PublishCollectedLimits(cachedSnap.providers, nowMs)

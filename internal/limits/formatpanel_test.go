@@ -161,9 +161,9 @@ func TestFormatLimitsPanel_Empty(t *testing.T) {
 
 func TestFormatLimitsPanel_EmptyMessageOverride(t *testing.T) {
 	layout := wide
-	layout.EmptyMessage = "(no agent panes open)"
+	layout.EmptyMessage = "(no signed-in harness)"
 	text := FormatLimitsPanel(nil, 1_700_000_000_000, layout)
-	if !strings.Contains(text, "no agent panes open") {
+	if !strings.Contains(text, "no signed-in harness") {
 		t.Fatalf("got:\n%s", text)
 	}
 	if strings.Contains(text, "no usage data") {
@@ -247,6 +247,27 @@ func TestFormatLimitsPanel_RowBudget(t *testing.T) {
 	text := FormatLimitsPanel(many, 1_700_000_000_000, PanelLayout{Columns: 40, Rows: 15, Color: false})
 	if len(strings.Split(text, "\n")) > 16 {
 		t.Fatalf("too many lines: %d", len(strings.Split(text, "\n")))
+	}
+}
+
+func TestFormatProviderBlock_HarnessInHeader(t *testing.T) {
+	p := sampleProvider()
+	p.Harness = "pi"
+	text := FormatProviderBlock(p, wide, 1_700_000_000_000)
+	if !strings.Contains(text, "via pi") {
+		t.Fatalf("header missing harness:\\n%s", text)
+	}
+	if !strings.Contains(text, "Plus") {
+		t.Fatalf("header dropped plan:\\n%s", text)
+	}
+}
+
+func TestFormatProviderBlock_NativeHarnessIsNamed(t *testing.T) {
+	p := sampleProvider()
+	p.Harness = "codex"
+	text := FormatProviderBlock(p, wide, 1_700_000_000_000)
+	if !strings.Contains(text, "via codex") {
+		t.Fatalf("native harness should be named:\\n%s", text)
 	}
 }
 

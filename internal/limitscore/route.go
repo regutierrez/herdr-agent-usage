@@ -39,7 +39,10 @@ func SubscriptionRouteForProviderAuth(backendID, credentialType string) (Subscri
 	switch strings.ToLower(strings.TrimSpace(backendID)) {
 	case "opencode-go":
 		return SubscriptionRoute{CollectorProviderID: "opencode", DisplayProviderID: "opencode-go"}, true
-	case "xai-oauth":
+	case "xai", "xai-oauth":
+		if backendID == "xai" && !strings.Contains(credentialType, "oauth") {
+			break
+		}
 		return SubscriptionRoute{CollectorProviderID: "grok", DisplayProviderID: "grok"}, true
 	case "anthropic":
 		if strings.Contains(credentialType, "oauth") {

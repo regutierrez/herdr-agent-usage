@@ -108,6 +108,7 @@ type grokDeadEnd struct {
 	planTier   string
 	wantPlan   string
 	wantNote   string
+	wantHide   bool
 	wantSource string
 }
 
@@ -138,23 +139,22 @@ func (d grokDeadEnd) options(t *testing.T) CollectGrokLimitsOptions {
 func grokDeadEnds() []grokDeadEnd {
 	future := time.UnixMilli(grokNowMs).Add(24 * time.Hour).UTC().Format(time.RFC3339)
 	past := time.UnixMilli(grokNowMs).Add(-time.Hour).UTC().Format(time.RFC3339)
-	const missingAuthNote = "no ~/.grok/auth.json — run `grok login`"
 	return []grokDeadEnd{
 		{
 			name:       "auth file missing",
-			wantNote:   missingAuthNote,
+			wantHide:   true,
 			wantSource: "none",
 		},
 		{
 			name:       "auth file unparseable",
 			authJSON:   "{not json",
-			wantNote:   missingAuthNote,
+			wantHide:   true,
 			wantSource: "none",
 		},
 		{
 			name:       "auth file holds no entry",
 			authJSON:   "{}",
-			wantNote:   missingAuthNote,
+			wantHide:   true,
 			wantSource: "none",
 		},
 		{
@@ -240,7 +240,11 @@ func TestCollectGrokLimits_DeadEndNotesSurviveWithoutObservation(t *testing.T) {
 			useAgentDB(t)
 			got := CollectGrokLimits(grokNowMs, tc.options(t))
 
-			if got.Note == nil || *got.Note != tc.wantNote {
+			if tc.wantHide {
+				if !got.Hide {
+					t.Fatalf("Hide: got false, want hidden when auth.json is absent")
+				}
+			} else if got.Note == nil || *got.Note != tc.wantNote {
 				t.Fatalf("Note: got %v, want %q", got.Note, tc.wantNote)
 			}
 			if got.Source != tc.wantSource {

@@ -32,7 +32,7 @@ type PanelLayout struct {
 	Rows    int
 	Color   bool
 	// EmptyMessage replaces the default "(no usage data yet)" text when the
-	// provider list is empty (e.g. "(no agent panes open)" for active-only mode).
+	// provider list is empty.
 	EmptyMessage string
 	// LimitPercent selects remaining (default) vs used presentation.
 	LimitPercent core.LimitPercent
@@ -283,10 +283,17 @@ func truncatePanelText(text string, columns int) string {
 
 func providerHeader(p ProviderLimits, layout PanelLayout) string {
 	name := bar.Bold(p.Label, layout.Color)
-	if p.PlanType != nil {
-		return name + " " + bar.Dim("·", layout.Color) + " " + *p.PlanType
+	var parts []string
+	if p.Harness != "" {
+		parts = append(parts, "via "+p.Harness)
 	}
-	return name
+	if p.PlanType != nil && *p.PlanType != "" {
+		parts = append(parts, *p.PlanType)
+	}
+	if len(parts) == 0 {
+		return name
+	}
+	return name + " " + bar.Dim("·", layout.Color) + " " + strings.Join(parts, " · ")
 }
 
 // apiWindowLine renders one rolling usage row. Tokens are the base metric —
@@ -425,6 +432,9 @@ func richBlock(p ProviderLimits, layout PanelLayout, withExtras bool, nowMs int6
 
 func compactLine(p ProviderLimits, layout PanelLayout) string {
 	name := bar.Bold(p.Label, layout.Color)
+	if p.Harness != "" && !strings.EqualFold(p.Harness, p.ProviderID) {
+		name += " via " + p.Harness
+	}
 	var windows []string
 	if p.Primary != nil {
 		windows = append(windows, inlineWindow(p.Primary, windowTag(p.Primary, "5h"), layout))

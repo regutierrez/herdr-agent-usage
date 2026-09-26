@@ -262,8 +262,8 @@ func TestCollectCodexLimits_NoRolloutsAndNoObservation(t *testing.T) {
 	if got.Primary != nil || got.Secondary != nil {
 		t.Fatalf("expected no windows, got %+v / %+v", got.Primary, got.Secondary)
 	}
-	if got.Note == nil || *got.Note != "no rollout jsonl under ~/.codex/sessions" {
-		t.Fatalf("note = %v, want the missing-rollout explanation", got.Note)
+	if !got.Hide {
+		t.Fatalf("missing sessions should hide the row, got %+v", got)
 	}
 }
 

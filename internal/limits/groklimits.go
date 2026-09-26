@@ -233,16 +233,14 @@ func CollectGrokLimits(nowMs int64, opts CollectGrokLimitsOptions) ProviderLimit
 		if b := borrowGrokWindows(nil, nil, nowMs); b != nil {
 			return *b
 		}
-		note := "no ~/.grok/auth.json — run `grok login`"
-		return ProviderLimits{ProviderID: "grok", Label: "Grok", Source: "none", FetchedAtMs: nowMs, Note: &note}
+		return ProviderLimits{ProviderID: "grok", Label: "Grok", Source: "none", FetchedAtMs: nowMs, Hide: true}
 	}
 	auth := ParseGrokAuthJSON(string(raw))
 	if auth == nil {
 		if b := borrowGrokWindows(nil, nil, nowMs); b != nil {
 			return *b
 		}
-		note := "no ~/.grok/auth.json — run `grok login`"
-		return ProviderLimits{ProviderID: "grok", Label: "Grok", Source: "none", FetchedAtMs: nowMs, Note: &note}
+		return ProviderLimits{ProviderID: "grok", Label: "Grok", Source: "none", FetchedAtMs: nowMs, Hide: true}
 	}
 
 	if auth.ExpiresAt != nil {

@@ -162,6 +162,9 @@ func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 	}
 	if ageMin > 120 {
 		note := "stale ~" + itoa(ageMin) + "m ago"
+		if ageMin >= 24*60 {
+			note += "; Claude has not refreshed this cache. Enable the optional statusLine hook (usagebar setup) to capture rate limits when Claude sends them."
+		}
 		out.Note = &note
 	}
 	return &out

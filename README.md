@@ -134,7 +134,7 @@ to hide cache data from both the sidebar and Agent Usage pane.
 
 ## Agent Usage pane
 
-- Auto-refreshes every **15s**. The pane tick updates sidebar `$limit` on open subscription panes and `$cache_*` on every open agent pane. Press **`r`** to refresh, **`q`** to quit. With the pane closed, `$limit` and `$cache_*` still refresh every **60s**. `$context` stays event-driven after the initial restore. After a Herdr restart or live handoff, a `[[startup]]` hook republishes `$title` / `$provider` / `$limit` / `$cache_*` / `$context` for every open agent pane so the sidebar is not blank until the next focus or turn.
+- Auto-refreshes every **15s**. The pane shows a subscription collector when that harness is installed and signed in, not only when one of its panes is open. Each row names the harness that holds the login (`via pi`, `via claude`). A collector whose auth file is missing is omitted. A Pi or OMP login without a quota snapshot stays visible with a no-data note; its quota is not guessed. A login that does not map to a collector (for example Copilot or Gemini inside Pi) is omitted rather than shown as a guessed window or as API spend. `--all` still lists every collector. The pane tick updates sidebar `$limit` on open subscription panes and `$cache_*` on every open agent pane. Press **`r`** to refresh, **`q`** to quit. With the pane closed, `$limit` and `$cache_*` still refresh every **60s**. `$context` stays event-driven after the initial restore. After a Herdr restart or live handoff, a `[[startup]]` hook republishes `$title` / `$provider` / `$limit` / `$cache_*` / `$context` for every open agent pane so the sidebar is not blank until the next focus or turn.
 - OpenCode Go may show three windows (**5h / 7d / 30d**). Other providers show whichever usage windows their data sources make available.
 - Open pane **token share** is local activity share within the shortest window (including a **closed / other** bucket for usage outside open panes). It is not account quota attribution.
 - Sidebar values ordinarily update after the agent has **settled** (not while `working`), so they match the last completed turn. `$cache_*` also refreshes on the periodic path to keep an evidence-backed TTL current. If the session cannot be resolved, the `$context` and `$cache_*` tokens are cleared rather than showing another session’s numbers.
@@ -547,7 +547,7 @@ the matching quota collector. Today the supported subscription routes are:
 | OpenCode | `xai-oauth` | Grok |
 | OpenCode | `anthropic` + OAuth | Claude |
 | OMP / Pi | `opencode-go` | OpenCode Go |
-| OMP / Pi | `xai-oauth` | Grok |
+| OMP / Pi | `xai` / `xai-oauth` + OAuth | Grok |
 | OMP / Pi | `anthropic` + OAuth | Claude |
 | OMP / Pi | `openai` / `openai-codex` + OAuth | Codex |
 
