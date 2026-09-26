@@ -134,7 +134,7 @@ to hide cache data from both the sidebar and Agent Usage pane.
 
 ## Agent Usage pane
 
-- Auto-refreshes every **15s**. The pane shows a subscription collector when that harness is installed and signed in, not only when one of its panes is open. Each row names the harness that holds the login (`via pi`, `via claude`). A collector whose auth file is missing is omitted. A Pi or OMP login without a quota snapshot stays visible with a no-data note; its quota is not guessed. A login that does not map to a collector (for example Copilot or Gemini inside Pi) is omitted rather than shown as a guessed window or as API spend. `--all` still lists every collector. The pane tick updates sidebar `$limit` on open subscription panes and `$cache_*` on every open agent pane. Press **`r`** to refresh, **`q`** to quit. With the pane closed, `$limit` and `$cache_*` still refresh every **60s**. `$context` stays event-driven after the initial restore. After a Herdr restart or live handoff, a `[[startup]]` hook republishes `$title` / `$provider` / `$limit` / `$cache_*` / `$context` for every open agent pane so the sidebar is not blank until the next focus or turn.
+- Auto-refreshes every **15s**. The pane shows a subscription collector when that harness is installed and signed in, not only when one of its panes is open. Each row names the harness that holds the login (`via pi`, `via claude`). A collector whose auth file is missing is omitted. A Pi login is read live with its saved OAuth token; a Pi or OMP login without a quota reading stays visible with a note saying why (expired token, failed request, no snapshot); its quota is not guessed. A login that does not map to a collector (for example Copilot or Gemini inside Pi) is omitted rather than shown as a guessed window or as API spend. `--all` still lists every collector. The pane tick updates sidebar `$limit` on open subscription panes and `$cache_*` on every open agent pane. Press **`r`** to refresh, **`q`** to quit. With the pane closed, `$limit` and `$cache_*` still refresh every **60s**. `$context` stays event-driven after the initial restore. After a Herdr restart or live handoff, a `[[startup]]` hook republishes `$title` / `$provider` / `$limit` / `$cache_*` / `$context` for every open agent pane so the sidebar is not blank until the next focus or turn.
 - OpenCode Go may show three windows (**5h / 7d / 30d**). Other providers show whichever usage windows their data sources make available.
 - Open pane **token share** is local activity share within the shortest window (including a **closed / other** bucket for usage outside open panes). It is not account quota attribution.
 - Sidebar values ordinarily update after the agent has **settled** (not while `working`), so they match the last completed turn. `$cache_*` also refreshes on the periodic path to keep an evidence-backed TTL current. If the session cannot be resolved, the `$context` and `$cache_*` tokens are cleared rather than showing another session’s numbers.
@@ -342,8 +342,8 @@ so this plugin just reads them back:
 | provider | local source of truth |
 | --- | --- |
 | Claude | `~/.claude.json` `cachedUsageUtilization` (+ statusLine cache), or another agent's observation of the same account |
-| Codex | `rate_limits` inside `event_msg` / `token_count` in the rollout jsonl, or another agent's observation of the same account |
-| Grok | agent stdio / `x.ai` billing, or another agent's observation of the same account |
+| Codex | `rate_limits` inside `event_msg` / `token_count` in the rollout jsonl, or another agent's observation of the same account; a Pi Codex login is read live from `chatgpt.com/backend-api/wham/usage` |
+| Grok | agent stdio / `x.ai` billing, or another agent's observation of the same account; a Pi xAI login is read live from `cli-chat-proxy.grok.com/v1/billing` when the Grok CLI has no meters |
 | **OpenCode Go** | **none of its own** (an observation by another agent still counts) |
 
 `opencode.db` has no usage table at all, its `account` table is empty (auth is
@@ -484,14 +484,19 @@ Everything is computed from files that the agents already keep on your machine:
 | Cursor | Context snapshots under `~/.cursor/herdr-usagebar/` (or `USAGEBAR_STATE_DIR`), written from the CLI statusLine payload. The location is fixed rather than following `CURSOR_CONFIG_DIR`, which only the Cursor process can see; no Cursor file is read or modified |
 | Grok | `~/.grok/sessions/**/signals.json`, `~/.grok/auth.json` (credentials for the credits fetch), `~/.grok/config.toml` (custom-model base URLs) |
 | OMP | `~/.omp/agent/sessions/**/*.jsonl`, `~/.omp/agent/models.db` (context window lookup), `~/.omp/agent/agent.db` (credential kind, and the `usage_history` windows OMP records for the accounts it drives) |
-| Pi coding agent | `~/.pi/agent/sessions/**/*.jsonl`, `~/.pi/agent/models-store.json` and `~/.pi/agent/models.json` (or the matching `PI_CODING_AGENT_DIR`), `~/.pi/agent/auth.json` (credential kind only) |
+| Pi coding agent | `~/.pi/agent/sessions/**/*.jsonl`, `~/.pi/agent/models-store.json` and `~/.pi/agent/models.json` (or the matching `PI_CODING_AGENT_DIR`), `~/.pi/agent/auth.json` (credential kind, and the OAuth access token, account id and expiry for logins that route to a collector; the refresh token is never read) |
 
 Pay-as-you-go detection is not tied to any one harness: it reads the same
 per-harness files above (the backend a session used is already recorded there —
 OpenCode's `providerID`, Codex's `model_provider`, Claude's deployment env,
 Grok's `config.toml`, OMP/Pi `message.provider`). No extra data sources; the
-only network calls are the authenticated provider usage fetches (Grok credits,
-OpenCode Go usage), and each one is skipped when its credential is absent.
+only network calls are the authenticated provider usage fetches (Codex and
+Grok usage, OpenCode Go usage), and each one is skipped when its credential
+is absent. A token is sent only to the vendor that issued it, is never
+refreshed (an expired Pi token is reported as `pi login expired — open pi to
+refresh it`), and is never written to disk. Each account is requested at most once per five
+minutes, failures included; only the resulting windows are cached, in
+`~/.claude/herdr-usagebar/usage-api-cache.json`.
 
 ### Where a window comes from
 
@@ -525,12 +530,12 @@ Borrowing is deliberately conservative:
   the observer, and the age of the observation, e.g.
   `account you@example.com · via OMP · ~3m ago`.
 
-A combination with no observer left is reported honestly rather than guessed:
-Pi never persists windows of its own, so a Claude or Codex account used
-exclusively through Pi, on a machine where neither the vendor CLI nor OMP has
-ever touched that account, still shows its "no data" note. Grok and OpenCode Go
-are unaffected either way — their usage fetches are authenticated over the
-network and need no local observer at all.
+Pi never persists windows of its own, so an account used exclusively through
+Pi is read live with the OAuth login Pi saved in `auth.json` (Codex and xAI
+logins). A Pi Codex login for a different account than the Codex
+CLI's own login never replaces that account's rollouts, and a Pi xAI login is
+used only when the Grok CLI reports no meters, since xAI logins carry no
+account id to compare.
 
 ### Harness and billing identity
 

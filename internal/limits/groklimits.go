@@ -154,7 +154,10 @@ func nestedVal(m map[string]any, keys ...string) *float64 {
 
 // CollectGrokLimitsOptions injects optional network helpers for tests.
 type CollectGrokLimitsOptions struct {
-	AuthPath        string
+	AuthPath string
+	// CollectorID is the collector id a routing harness's xAI login must
+	// route to for this collector to use it. Empty means "grok".
+	CollectorID     string
 	FetchWebBilling func(key string) *LimitWindow // returns primary window from web
 	FetchPlanTier   func(key string) *string
 	// TryBillingRPC overrides the default grok agent stdio x.ai/billing probe.
@@ -223,7 +226,29 @@ func TryGrokBillingRPC(nowMs int64, email *string) *ProviderLimits {
 // Every dead end falls back to another agent's observation of the same xAI
 // account (see windowpool.go): Grok's meters need a fresh `grok login`, which
 // a subscription driven through another harness never performs.
+//
+// A routing harness's (Pi's) xAI login is read live from the Grok billing
+// endpoint only when the native path produced no windows. xAI logins carry
+// no account id, so a live reading cannot be proven to be the same account
+// as a native `grok login` and must not replace its meters.
 func CollectGrokLimits(nowMs int64, opts CollectGrokLimitsOptions) ProviderLimits {
+	cached := collectGrokNativeLimits(nowMs, opts)
+	if hasAnyWindow(cached) {
+		return cached
+	}
+	collectorID := opts.CollectorID
+	if collectorID == "" {
+		collectorID = "grok"
+	}
+	token := routedSubscriptionToken(collectorID)
+	if token == nil {
+		return cached
+	}
+	return preferLiveReading(cached, collectGrokWithToken(*token, "grok", "Grok", nowMs))
+}
+
+// collectGrokNativeLimits reads the Grok CLI's own login and meters.
+func collectGrokNativeLimits(nowMs int64, opts CollectGrokLimitsOptions) ProviderLimits {
 	path := opts.AuthPath
 	if path == "" {
 		path = ResolveGrokAuthPath()

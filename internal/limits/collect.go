@@ -108,7 +108,7 @@ func DefaultCollectOptions() CollectOptions {
 				if !profile.Implicit {
 					authPath = filepath.Join(profile.Home, "auth.json")
 				}
-				pl := CollectGrokLimits(nowMs, CollectGrokLimitsOptions{AuthPath: authPath})
+				pl := CollectGrokLimits(nowMs, CollectGrokLimitsOptions{AuthPath: authPath, CollectorID: profile.ID})
 				pl.ProviderID = profile.ID
 				pl.Label = profile.Label
 				return applyGrokProfileGrouping(pl, profile, multiGrok)

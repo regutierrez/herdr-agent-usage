@@ -10,14 +10,24 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// AuthCredential is one saved login, without its secret.
+// AuthCredential is one saved login. Provider and Type identify it; the
+// bearer fields are filled only where the harness stores them in a format
+// this adapter can read (Pi's auth.json). They are handed to the quota
+// collector for the same subscription and are never written anywhere.
 type AuthCredential struct {
 	Provider string
 	Type     string
+	// AccessToken is the OAuth bearer token. Empty when not readable.
+	AccessToken string
+	// AccountID is the vendor account id when the login records one.
+	AccountID string
+	// ExpiresAtMs is the access token expiry in epoch ms. 0 means unknown.
+	ExpiresAtMs int64
 }
 
 // ListOMPCredentials returns every enabled OMP login as provider plus
-// credential kind. Secrets in auth_credentials.data are never read.
+// credential kind. Secrets in auth_credentials.data are never read, so OMP
+// logins carry no bearer fields.
 func ListOMPCredentials() []AuthCredential {
 	dbPath := ResolveAgentDBPath()
 	if dbPath == "" {
@@ -76,8 +86,10 @@ func PiCredentialType(provider string) string {
 	return piCredentialTypeIn(defaultPiAgentDir(), provider)
 }
 
-// ListPiCredentials returns every provider login in a Pi agent dir, as
-// provider id plus credential kind. Token fields are never copied out.
+// ListPiCredentials returns every provider login in a Pi agent dir: the
+// provider id, credential kind, and for OAuth logins the access token,
+// account id and expiry Pi saved. The refresh token is never read: using it
+// would rotate Pi's login out from under Pi.
 func ListPiCredentials(agentDir string) []AuthCredential {
 	entries := readPiAuth(agentDir)
 	if len(entries) == 0 {
@@ -90,8 +102,11 @@ func ListPiCredentials(agentDir string) []AuthCredential {
 			continue
 		}
 		out = append(out, AuthCredential{
-			Provider: strings.ToLower(strings.TrimSpace(provider)),
-			Type:     kind,
+			Provider:    strings.ToLower(strings.TrimSpace(provider)),
+			Type:        kind,
+			AccessToken: stringField(entry, "access"),
+			AccountID:   stringField(entry, "accountId"),
+			ExpiresAtMs: int64Field(entry, "expires"),
 		})
 	}
 	return out
@@ -134,4 +149,19 @@ func credentialKind(entry map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func stringField(entry map[string]any, key string) string {
+	value, _ := entry[key].(string)
+	return strings.TrimSpace(value)
+}
+
+// int64Field reads a JSON number. encoding/json decodes numbers into
+// float64, which holds epoch milliseconds exactly.
+func int64Field(entry map[string]any, key string) int64 {
+	value, ok := entry[key].(float64)
+	if !ok || value <= 0 {
+		return 0
+	}
+	return int64(value)
 }

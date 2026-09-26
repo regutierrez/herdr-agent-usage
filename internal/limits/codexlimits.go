@@ -218,8 +218,36 @@ func CollectCodexLimits(_ *string, nowMs int64) ProviderLimits {
 }
 
 // CollectCodexLimitsIn collects one Codex home's windows and stamps them with
-// the given provider id/label so multi-profile rows stay independent.
+// the given provider id/label so multi-profile rows stay independent. A Codex
+// login saved by a routing harness (Pi) for the same collector is read live
+// from ChatGPT's usage endpoint; see preferLiveReading for which reading wins.
 func CollectCodexLimitsIn(home, providerID, label string, nowMs int64) ProviderLimits {
+	cached := collectCodexRolloutLimits(home, providerID, label, nowMs)
+	token := routedCodexToken(home, providerID)
+	if token == nil {
+		return cached
+	}
+	return preferLiveReading(cached, collectCodexWithToken(*token, providerID, label, nowMs))
+}
+
+// routedCodexToken returns a routing harness's Codex login for this
+// collector, unless the home's own CLI is signed in to a different account:
+// that account's rollouts must not be replaced by another account's quota.
+func routedCodexToken(home, providerID string) *SubscriptionToken {
+	token := routedSubscriptionToken(providerID)
+	if token == nil {
+		return nil
+	}
+	native := codex.AccountIDIn(home)
+	if native != "" && token.AccountID != "" && native != token.AccountID {
+		return nil
+	}
+	return token
+}
+
+// collectCodexRolloutLimits reads the windows Codex itself recorded in its
+// rollouts, falling back to another agent's observation of the account.
+func collectCodexRolloutLimits(home, providerID, label string, nowMs int64) ProviderLimits {
 	paths := ListNewestRolloutPathsIn(home, codexMaxRolloutsToScan)
 	// Newest-first: take the first rollout that carries a rate_limits snapshot.
 	// A just-opened session has session_meta but no token_count yet, so the
