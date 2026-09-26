@@ -341,7 +341,7 @@ so this plugin just reads them back:
 
 | provider | local source of truth |
 | --- | --- |
-| Claude | `~/.claude.json` `cachedUsageUtilization` (+ statusLine cache), or another agent's observation of the same account |
+| Claude | Live `api.anthropic.com/api/oauth/usage` with the profile's `.credentials.json` token (5h, 7d and Fable), merged per window with `~/.claude.json` `cachedUsageUtilization`, the statusLine cache, and another agent's observation of the same account |
 | Codex | `rate_limits` inside `event_msg` / `token_count` in the rollout jsonl, or another agent's observation of the same account; a Pi Codex login is read live from `chatgpt.com/backend-api/wham/usage` |
 | Grok | agent stdio / `x.ai` billing, or another agent's observation of the same account; a Pi xAI login is read live from `cli-chat-proxy.grok.com/v1/billing` when the Grok CLI has no meters |
 | **OpenCode Go** | **none of its own** (an observation by another agent still counts) |
@@ -490,13 +490,15 @@ Pay-as-you-go detection is not tied to any one harness: it reads the same
 per-harness files above (the backend a session used is already recorded there —
 OpenCode's `providerID`, Codex's `model_provider`, Claude's deployment env,
 Grok's `config.toml`, OMP/Pi `message.provider`). No extra data sources; the
-only network calls are the authenticated provider usage fetches (Codex and
-Grok usage, OpenCode Go usage), and each one is skipped when its credential
+only network calls are the authenticated provider usage fetches (Claude, Codex
+and Grok usage, OpenCode Go usage), and each one is skipped when its credential
 is absent. A token is sent only to the vendor that issued it, is never
 refreshed (an expired Pi token is reported as `pi login expired — open pi to
 refresh it`), and is never written to disk. Each account is requested at most once per five
 minutes, failures included; only the resulting windows are cached, in
-`~/.claude/herdr-usagebar/usage-api-cache.json`.
+`~/.claude/herdr-usagebar/usage-api-cache.json`. On macOS Claude Code keeps
+its token in the Keychain, which is not read, so Claude falls back to the
+local caches there.
 
 ### Where a window comes from
 
@@ -531,11 +533,15 @@ Borrowing is deliberately conservative:
   `account you@example.com · via OMP · ~3m ago`.
 
 Pi never persists windows of its own, so an account used exclusively through
-Pi is read live with the OAuth login Pi saved in `auth.json` (Codex and xAI
-logins). A Pi Codex login for a different account than the Codex
+Pi is read live with the OAuth login Pi saved in `auth.json` (Codex, xAI and
+Anthropic logins). A Pi Codex login for a different account than the Codex
 CLI's own login never replaces that account's rollouts, and a Pi xAI login is
 used only when the Grok CLI reports no meters, since xAI logins carry no
 account id to compare.
+
+Claude windows are merged per window, not taken from one source whole: the
+statusLine never carries Fable, so a Fable window only present in an older
+source is kept and labeled with its own age (`Fable as of ~7200m ago`).
 
 ### Harness and billing identity
 

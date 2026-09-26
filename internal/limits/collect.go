@@ -70,6 +70,8 @@ func DefaultCollectOptions() CollectOptions {
 				pl := CollectClaudeLimits(nowMs, CollectClaudeLimitsOptions{
 					StatusLineCachePath: profile.LimitsCache,
 					ClaudeJSONPath:      profile.JSONPath,
+					CredentialsPath:     resolveClaudeCredentialsPath(profile.ConfigDir),
+					CollectorID:         profile.ID,
 				})
 				pl.ProviderID = profile.ID
 				pl.Label = profile.Label

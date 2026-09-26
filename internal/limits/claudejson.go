@@ -48,6 +48,26 @@ func fableWindowFromLimits(limits []scopedLimit) *LimitWindow {
 	return nil
 }
 
+// claudeUtilization is Claude's usage payload. Claude Code caches it under
+// cachedUsageUtilization.utilization in ~/.claude.json, and the OAuth usage
+// endpoint returns the same shape live.
+type claudeUtilization struct {
+	FiveHour *utilizationWindow `json:"five_hour"`
+	SevenDay *utilizationWindow `json:"seven_day"`
+	Limits   []scopedLimit      `json:"limits"`
+}
+
+// windows maps the payload to the 5h, weekly and Fable slots. Any may be nil.
+func (u claudeUtilization) windows() (primary, secondary, fable *LimitWindow) {
+	if u.FiveHour != nil {
+		primary = WindowFromUtilization(u.FiveHour.Utilization, u.FiveHour.ResetsAt, 300)
+	}
+	if u.SevenDay != nil {
+		secondary = WindowFromUtilization(u.SevenDay.Utilization, u.SevenDay.ResetsAt, 10080)
+	}
+	return primary, secondary, fableWindowFromLimits(u.Limits)
+}
+
 // ResolveClaudeJSONPath returns CLAUDE_CONFIG_JSON or ~/.claude.json.
 func ResolveClaudeJSONPath() string {
 	if v := os.Getenv("CLAUDE_CONFIG_JSON"); v != "" {
@@ -90,12 +110,8 @@ func WindowFromUtilization(utilization *float64, resetsAtISO *string, windowMinu
 func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 	var parsed struct {
 		CachedUsageUtilization *struct {
-			FetchedAtMs *float64 `json:"fetchedAtMs"`
-			Utilization *struct {
-				FiveHour *utilizationWindow `json:"five_hour"`
-				SevenDay *utilizationWindow `json:"seven_day"`
-				Limits   []scopedLimit      `json:"limits"`
-			} `json:"utilization"`
+			FetchedAtMs *float64           `json:"fetchedAtMs"`
+			Utilization *claudeUtilization `json:"utilization"`
 		} `json:"cachedUsageUtilization"`
 		OAuthAccount *struct {
 			OrganizationType *string `json:"organizationType"`
@@ -113,14 +129,7 @@ func ProviderLimitsFromClaudeJSON(rawJSON string, nowMs int64) *ProviderLimits {
 	if cache == nil || cache.Utilization == nil {
 		return nil
 	}
-	var primary, secondary, fable *LimitWindow
-	if cache.Utilization.FiveHour != nil {
-		primary = WindowFromUtilization(cache.Utilization.FiveHour.Utilization, cache.Utilization.FiveHour.ResetsAt, 300)
-	}
-	if cache.Utilization.SevenDay != nil {
-		secondary = WindowFromUtilization(cache.Utilization.SevenDay.Utilization, cache.Utilization.SevenDay.ResetsAt, 10080)
-	}
-	fable = fableWindowFromLimits(cache.Utilization.Limits)
+	primary, secondary, fable := cache.Utilization.windows()
 	if primary == nil && secondary == nil && fable == nil {
 		return nil
 	}
