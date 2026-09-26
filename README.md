@@ -541,7 +541,9 @@ account id to compare.
 
 Claude windows are merged per window, not taken from one source whole: the
 statusLine never carries Fable, so a Fable window only present in an older
-source is kept and labeled with its own age (`Fable as of ~7200m ago`).
+source is kept and labeled with its own age (`Fable as of ~7200m ago`). A
+window whose reset time has passed is shown as unused with no countdown, and
+the row says `7d reset since this reading`.
 
 ### Harness and billing identity
 

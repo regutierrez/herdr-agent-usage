@@ -231,6 +231,7 @@ func CollectAllProviderLimits(cwd *string, nowMs int64, opts CollectOptions) []P
 		}
 	}
 
+	base = clearElapsedWindows(base, nowMs)
 	if opts.Attach != nil {
 		return opts.Attach(base, nowMs)
 	}
