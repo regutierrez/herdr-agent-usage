@@ -1,6 +1,7 @@
 package limits
 
 import (
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,25 +50,15 @@ func claudeFixture(t *testing.T) CollectClaudeLimitsOptions {
 		"limits":[{"kind":"weekly_scoped","percent":6,"resets_at":"2026-10-01T12:00:00Z","scope":{"model":{"display_name":"Fable"}}}]}}}`)
 	writeFile(t, statusPath, `{"fiveHour":{"usedPercentage":20,"resetsAt":1790391600,"windowMinutes":300},
 		"sevenDay":{"usedPercentage":55,"resetsAt":1790856000,"windowMinutes":10080},"fetchedAtMs":`+oneHourAgo+`}`)
-	return CollectClaudeLimitsOptions{
-		ClaudeJSONPath:      jsonPath,
-		StatusLineCachePath: statusPath,
-		CredentialsPath:     filepath.Join(dir, ".credentials.json"),
-	}
+	t.Setenv("PI_CODING_AGENT_DIR", t.TempDir())
+	return CollectClaudeLimitsOptions{CredentialsPath: filepath.Join(dir, ".credentials.json")}
 }
 
-func TestClaude_NewerStatusLineNoLongerDropsFable(t *testing.T) {
+func TestClaude_StaleArtifactsDoNotSupplyWindows(t *testing.T) {
 	opts := claudeFixture(t)
-
 	got := CollectClaudeLimits(testNowMs, opts)
-	if got.Secondary == nil || got.Secondary.UsedPercentage != 55 {
-		t.Fatalf("7d = %+v, want the newer statusLine 55%%", got.Secondary)
-	}
-	if got.Fable == nil || got.Fable.UsedPercentage != 6 {
-		t.Fatalf("fable = %+v, want 6%% carried from ~/.claude.json", got.Fable)
-	}
-	if got.Note == nil || !strings.Contains(*got.Note, "Fable as of ~7200m ago (claude.json cachedUsageUtilization)") {
-		t.Fatalf("note = %v, want the Fable window labeled with its own age", got.Note)
+	if got.Primary != nil || got.Secondary != nil || got.Fable != nil || got.Note == nil || !strings.Contains(*got.Note, "no readable OAuth login") {
+		t.Fatalf("stale artifacts must not supply windows: %+v", got)
 	}
 }
 
@@ -89,7 +80,7 @@ func TestClaude_LiveUsageReplacesStaleCaches(t *testing.T) {
 	}
 }
 
-func TestClaude_ExpiredTokenFallsBackToCachesWithoutRequest(t *testing.T) {
+func TestClaude_ExpiredTokenReportsFailureWithoutCachedWindows(t *testing.T) {
 	vendor := startFakeUsageVendor(t)
 	opts := claudeFixture(t)
 	writeFile(t, opts.CredentialsPath, `{"claudeAiOauth":{"accessToken":"old","expiresAt":1000}}`)
@@ -98,15 +89,30 @@ func TestClaude_ExpiredTokenFallsBackToCachesWithoutRequest(t *testing.T) {
 	if len(vendor.hits("/claude")) != 0 {
 		t.Fatal("an expired Claude token must not be sent")
 	}
-	if got.Fable == nil || got.Secondary == nil || got.Secondary.UsedPercentage != 55 {
-		t.Fatalf("got %+v, want the merged cached windows", got)
+	if got.Primary != nil || got.Secondary != nil || got.Fable != nil || got.Note == nil || !strings.Contains(*got.Note, "expired") {
+		t.Fatalf("expired token must show failure without cached windows: %+v", got)
+	}
+}
+
+func TestClaude_FailedRequestReportsFailureWithoutCachedWindows(t *testing.T) {
+	vendor := startFakeUsageVendor(t)
+	vendor.setStatus(http.StatusServiceUnavailable)
+	opts := claudeFixture(t)
+	writeFile(t, opts.CredentialsPath, `{"claudeAiOauth":{"accessToken":"claude-token","expiresAt":1790384400000}}`)
+
+	got := CollectClaudeLimits(testNowMs, opts)
+	if len(vendor.hits("/claude")) != 1 {
+		t.Fatal("expected a live request")
+	}
+	if got.Primary != nil || got.Secondary != nil || got.Fable != nil || got.Note == nil || !strings.Contains(*got.Note, "failed") {
+		t.Fatalf("failed request must show failure without cached windows: %+v", got)
 	}
 }
 
 func TestClaude_PiAnthropicLoginUsedOnlyWithoutNativeCredentials(t *testing.T) {
 	vendor := startFakeUsageVendor(t)
-	writePiAuth(t, `{"anthropic":{"type":"oauth","access":"pi-claude-token","expires":1790384400000}}`)
 	opts := claudeFixture(t)
+	writePiAuth(t, `{"anthropic":{"type":"oauth","access":"pi-claude-token","expires":1790384400000}}`)
 
 	got := CollectClaudeLimits(testNowMs, opts)
 	if hits := vendor.hits("/claude"); len(hits) != 1 || hits[0].Authorization != "Bearer pi-claude-token" {

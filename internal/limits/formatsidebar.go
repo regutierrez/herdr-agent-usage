@@ -74,6 +74,9 @@ func formatCompactTokens(tokens float64) string {
 // Context usage remains in its own $context row. percent selects remaining
 // (default) vs used presentation; the tag has no left/used suffix.
 func FormatSidebarLimit(provider ProviderLimits, _ int64, percent core.LimitPercent) string {
+	if provider.Unavailable {
+		return "usage unavailable"
+	}
 
 	candidates := []struct {
 		window   *LimitWindow

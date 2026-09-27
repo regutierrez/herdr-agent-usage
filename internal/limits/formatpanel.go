@@ -514,7 +514,18 @@ func richBlock(p ProviderLimits, layout PanelLayout, withExtras bool, nowMs int6
 }
 
 func compactLine(p ProviderLimits, layout PanelLayout) string {
-	name := bar.Bold(p.Label, layout.Color)
+	name := p.Label
+	if p.Harness != "" && !strings.EqualFold(p.Harness, p.ProviderID) {
+		name += " via " + p.Harness
+	}
+	if !hasAnyWindow(p) {
+		reason := "no data yet"
+		if p.Note != nil && *p.Note != "" {
+			reason = "no data: " + *p.Note
+		}
+		return truncatePanelText(name+" · "+reason, layout.Columns)
+	}
+	name = bar.Bold(p.Label, layout.Color)
 	if p.Harness != "" && !strings.EqualFold(p.Harness, p.ProviderID) {
 		name += " via " + p.Harness
 	}

@@ -55,7 +55,7 @@ Copy the prompt in [docs/LLM-SETUP.md](docs/LLM-SETUP.md) into an LLM coding age
 The agent can install the plugin and guide you through the remaining setup.
 
 - **Toasts:** The agent must ask for your approval before enabling toast notifications.
-- **Keybindings:** The recommended shortcuts are `ctrl+shift+u` to open the limits pane and `ctrl+shift+m` to refresh meters (single chords; no Herdr prefix). If either shortcut is already in use, the agent must ask which shortcut to use instead.
+- **Keybindings:** The recommended shortcuts are `ctrl+shift+u` to open the limits popup and `ctrl+shift+m` to refresh meters (single chords; no Herdr prefix). If either shortcut is already in use, the agent must ask which shortcut to use instead.
 
 ## Quick start
 
@@ -63,7 +63,7 @@ The agent can install the plugin and guide you through the remaining setup.
 2. Open a workspace with at least one agent pane.
 3. Add the sidebar rows printed by `usagebar.setup` to your Herdr config, then run `herdr server reload-config`.
 4. After an agent turn completes (or you focus the pane), the sidebar shows provider limit remaining above context usage. `$limit` also refreshes on its own while the pane sits idle. A Herdr restart restores the same tokens via the plugin startup hook.
-5. Open the limits pane:
+5. Open the limits popup:
 
 ```bash
 herdr plugin action invoke usagebar.open-limits
@@ -76,7 +76,7 @@ herdr plugin action invoke usagebar.open-limits
 key = "ctrl+shift+u"
 type = "plugin_action"
 command = "usagebar.open-limits"
-description = "Agent Usage: open limits pane"
+description = "Agent Usage: open limits popup"
 
 [[keys.command]]
 key = "ctrl+shift+m"
@@ -91,7 +91,7 @@ On Mac that is **Control+Shift+U** / **Control+Shift+M** (not Command). Then `he
 
 | Action | Command | What it does |
 | --- | --- | --- |
-| Open limits pane | `usagebar.open-limits` | Split pane with provider windows |
+| Open limits popup | `usagebar.open-limits` | Popup with provider windows |
 | Refresh meters | `usagebar.refresh` | Recompute sidebar `$limit`, `$cache`, and `$context` tokens for the target pane |
 | Setup | `usagebar.setup` | Seed plugin config, show sidebar/toast/key snippets, report Herdr toast status |
 | Enable toast | `usagebar.enable-toast` | Append `[ui.toast]` only if missing (never overwrites) |
@@ -110,7 +110,7 @@ herdr plugin action invoke usagebar.setup
 | **Sidebar `$cache_*` row** | Session-cumulative prompt-cache hit rate (`cache hit 93.3%`), plus remaining TTL only from a recorded expiry. ⚠️ when that TTL has already elapsed. Exactly one of `$cache_high` / `$cache_mid` / `$cache_low` is set. High uses the default sidebar color; mid/low are yellow/red in `config.toml` |
 | **Sidebar `$limit` row** | Shortest provider limit window (`5h 72%` remaining), refreshed with the Agent Usage pane (15s) or every 60s while that pane is closed. Pay-as-you-go panes show what that pane spent on its backend (`Σ 425k $0.04`, scoped to the pane's session and backend) instead |
 | **Sidebar `$provider` row** | Subscription provider (`opencode-go`, `grok`, `claude`, …) on a subscription pane, or the backend actually billed on a pay-as-you-go pane (`deepseek`). The adjacent burn total is scoped to that same backend in the pane's session |
-| **Agent Usage pane** | One block per billing provider, independent of harness. Subscription providers show plan windows and cross-harness pane activity. Pay-as-you-go backends show one merged 24h / 7d / 30d block, model breakdown, and pane share even when multiple harnesses use the same backend. Prompt-cache data stays sidebar-only, except red-band panes (<50% session hit rate), which produce a `⚠ cache: <repo> (<agent>) only N% cached` warning in the footer |
+| **Agent Usage popup** | One block per billing provider, independent of harness. Subscription providers show plan windows and cross-harness pane activity. Pay-as-you-go backends show one merged 24h / 7d / 30d block, model breakdown, and pane share even when multiple harnesses use the same backend. Prompt-cache data stays sidebar-only, except red-band panes (<50% session hit rate), which produce a `⚠ cache: <repo> (<agent>) only N% cached` warning in the footer |
 | **Toasts** (optional) | Remaining-limit warnings at configured thresholds (default 50 / 20 / 10 / 5 % left) |
 
 ### Supported agents
@@ -343,7 +343,7 @@ so this plugin just reads them back:
 
 | provider | local source of truth |
 | --- | --- |
-| Claude | Live `api.anthropic.com/api/oauth/usage` with the profile's `.credentials.json` token (5h, 7d and Fable), merged per window with `~/.claude.json` `cachedUsageUtilization`, the statusLine cache, and another agent's observation of the same account |
+| Claude | Live `api.anthropic.com/api/oauth/usage` with the profile's `.credentials.json` token (or Pi's Anthropic OAuth login when Claude's is unavailable). Failed or missing OAuth reads show an error, not old quota windows. |
 | Codex | `rate_limits` inside `event_msg` / `token_count` in the rollout jsonl, or another agent's observation of the same account; a Pi Codex login is read live from `chatgpt.com/backend-api/wham/usage` |
 | Grok | agent stdio / `x.ai` billing, or another agent's observation of the same account; a Pi xAI login is read live from `cli-chat-proxy.grok.com/v1/billing` when the Grok CLI has no meters |
 | **OpenCode Go** | **none of its own** (an observation by another agent still counts) |
@@ -542,11 +542,12 @@ CLI's own login never replaces that account's rollouts, and a Pi xAI login is
 used only when the Grok CLI reports no meters, since xAI logins carry no
 account id to compare.
 
-Claude windows are merged per window, not taken from one source whole: the
-statusLine never carries Fable, so a Fable window only present in an older
-source is kept and labeled with its own age (`Fable as of ~7200m ago`). A
-window whose reset time has passed is shown as unused with no countdown, and
-the row says `7d reset since this reading`.
+Claude quota windows come only from the OAuth usage response (throttled to
+one request per account every five minutes). If that read fails or no readable
+OAuth login exists, the pane reports why and the sidebar replaces any old
+percentage with `usage unavailable`. Old statusLine and `~/.claude.json`
+usage snapshots do not supply quota windows. Other providers may still use
+their own recorded snapshots.
 
 ### Harness and billing identity
 

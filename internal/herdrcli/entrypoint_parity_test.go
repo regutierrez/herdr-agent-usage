@@ -23,7 +23,17 @@ var openLimitsPaneScript = filepath.Join("..", "..", "bin", "open-limits-pane.sh
 
 // openLimitsPaneArgs is what the entrypoint passes to the herdr action declared
 // in herdr-plugin.toml.
-const openLimitsPaneArgs = "plugin pane open --plugin usagebar --entrypoint limits --placement split --direction right --no-focus"
+const openLimitsPaneArgs = "plugin pane open --plugin usagebar --entrypoint limits --focus"
+
+func TestLimitsPaneUsesPopupPlacement(t *testing.T) {
+	manifest, err := os.ReadFile(filepath.Join("..", "..", "herdr-plugin.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(manifest), "[[panes]]\nid = \"limits\"\ntitle = \"Agent Usage\"\nplacement = \"popup\"\n") {
+		t.Fatal("limits pane must use popup placement in the plugin manifest")
+	}
+}
 
 // entrypointFixtures holds the HERDR_BIN_PATH shapes under test plus the herdr
 // stand-ins that record which executable was invoked.

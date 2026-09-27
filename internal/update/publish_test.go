@@ -94,6 +94,18 @@ func TestLimitPublishTargets_SkipsEmptyLimit(t *testing.T) {
 	}
 }
 
+func TestLimitPublishTargets_FailedUsageReplacesOldPercent(t *testing.T) {
+	providers := []limits.ProviderLimits{{ProviderID: "claude", Unavailable: true}}
+	panes := []LimitPublishPane{{
+		PaneID: "w1:p1", Resolved: true, BillingMode: limits.BillingSubscription,
+		LimitsProviderID: "claude", Tokens: map[string]string{"limit": "5h 100%"},
+	}}
+	got := LimitPublishTargets(providers, panes, 0, "")
+	if len(got) != 1 || got[0].LimitToken != "usage unavailable" {
+		t.Fatalf("failed usage must replace the stale percentage: %#v", got)
+	}
+}
+
 func TestLimitPublishTargets_SkipsPayAsYouGo(t *testing.T) {
 	providers := []limits.ProviderLimits{{
 		ProviderID: "claude",

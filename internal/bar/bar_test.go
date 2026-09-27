@@ -5,6 +5,7 @@ package bar
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -26,6 +27,20 @@ func TestRenderBar_0And100(t *testing.T) {
 	}
 	if got := RenderBar(100, 6); got != "██████" {
 		t.Fatalf("100%% = %q", got)
+	}
+}
+
+func TestRenderBar_WholeCellsAtFractionalPercentages(t *testing.T) {
+	for _, tt := range []struct {
+		percent float64
+		want    string
+	}{
+		{87, strings.Repeat("█", 19) + strings.Repeat("░", 3)},
+		{61, strings.Repeat("█", 13) + strings.Repeat("░", 9)},
+	} {
+		if got := RenderBar(tt.percent, 22); got != tt.want {
+			t.Errorf("RenderBar(%v, 22) = %q, want %q", tt.percent, got, tt.want)
+		}
 	}
 }
 

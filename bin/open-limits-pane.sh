@@ -1,5 +1,5 @@
 #!/bin/bash
-# Action: open the limits plugin pane as a right split
+# Action: open the limits plugin popup
 set -euo pipefail
 # HERDR_BIN_PATH can outlive the binary it names: Herdr exports the path of the
 # running server binary, and a package manager that rotates version directories
@@ -14,6 +14,4 @@ fi
 exec "$HERDR_BIN" plugin pane open \
   --plugin usagebar \
   --entrypoint limits \
-  --placement split \
-  --direction right \
-  --no-focus
+  --focus

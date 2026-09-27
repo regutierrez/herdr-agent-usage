@@ -52,7 +52,10 @@ type ProviderLimits struct {
 	Harness string
 	// Hide drops the row from the pane. A routing harness with no recorded
 	// window is not a failure to display; the vendor file simply is not there.
-	Hide        bool
+	Hide bool
+	// Unavailable means a live quota read failed. Sidebar publishers replace
+	// the last percentage with an unavailable label instead of retaining it.
+	Unavailable bool
 	Source      string
 	FetchedAtMs int64
 	Note        *string

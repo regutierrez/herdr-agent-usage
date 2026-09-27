@@ -117,7 +117,7 @@ func ApplyLoginHarness(rows []ProviderLimits, logins []LoginHarness) []ProviderL
 		}
 		out[i].Harness = harness
 		out[i].Hide = false
-		if !strings.EqualFold(harness, out[i].ProviderID) && (out[i].Source == "none" || out[i].Source == "") {
+		if !out[i].Unavailable && !strings.EqualFold(harness, out[i].ProviderID) && (out[i].Source == "none" || out[i].Source == "") {
 			note := "no subscription quota snapshot available via " + harness
 			out[i].Note = &note
 		}

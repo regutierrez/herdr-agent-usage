@@ -72,5 +72,5 @@ command = ["bash", "bin/run-update-check.sh"]
 [[panes]]
 id = "limits"
 title = "Agent Usage"
-placement = "split"
+placement = "popup"
 command = ["bash", "bin/run-limits-pane.sh"]

@@ -74,6 +74,15 @@ func TestFormatLimitsPanel_UsedCompactInvertsInlinePercent(t *testing.T) {
 	}
 }
 
+func TestCompactLine_ShowsUnavailableReason(t *testing.T) {
+	note := "usage request failed"
+	p := ProviderLimits{ProviderID: "claude", Label: "Claude", Note: &note, Unavailable: true}
+	got := compactLine(p, PanelLayout{Columns: 60})
+	if !strings.Contains(got, "no data: usage request failed") || strings.Contains(got, "%") {
+		t.Fatalf("compact failure = %q", got)
+	}
+}
+
 func TestFormatProviderBlock_EmDash(t *testing.T) {
 	text := FormatProviderBlock(ProviderLimits{
 		ProviderID: "opencode", Label: "OpenCode", Source: "none", FetchedAtMs: 0,

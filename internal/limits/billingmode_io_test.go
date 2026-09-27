@@ -51,6 +51,23 @@ func clearClaudeDeployEnv(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
 }
 
+func TestPiSubscriptionRouteUsesSessionBackendCredential(t *testing.T) {
+	agentDir := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", agentDir)
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	writeFile(t, path, `{"type":"message","id":"turn-1","parentId":null,"message":{"role":"assistant","provider":"anthropic"}}`+"\n")
+	pane := OpenPaneSnapshot{Agent: "pi", SessionID: &path}
+
+	writeFile(t, filepath.Join(agentDir, "auth.json"), `{"anthropic":{"type":"oauth"}}`)
+	if route, ok := ompPiSubscriptionRoute("pi", pane); !ok || route.CollectorProviderID != "claude" {
+		t.Fatalf("oauth route = %#v, %v; want claude", route, ok)
+	}
+	writeFile(t, filepath.Join(agentDir, "auth.json"), `{"anthropic":{"type":"api_key"}}`)
+	if route, ok := ompPiSubscriptionRoute("pi", pane); ok {
+		t.Fatalf("api key must not route to subscription: %#v", route)
+	}
+}
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

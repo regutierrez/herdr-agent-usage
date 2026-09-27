@@ -70,6 +70,15 @@ func TestInstalledProviderFilter_ClaudeJSONShowsClaude(t *testing.T) {
 	}
 }
 
+func TestApplyLoginHarness_PreservesUsageFailureReason(t *testing.T) {
+	note := "live Claude usage unavailable: no readable OAuth login"
+	rows := []ProviderLimits{{ProviderID: "claude", Source: "none", Unavailable: true, Note: &note}}
+	got := ApplyLoginHarness(rows, []LoginHarness{{CollectorID: "claude", Harness: "pi"}})
+	if len(got) != 1 || got[0].Note == nil || *got[0].Note != note || got[0].Harness != "pi" {
+		t.Fatalf("failed usage reason must survive Pi labeling: %+v", got)
+	}
+}
+
 func TestApplyLoginHarness_KeepsPiLoginWithoutQuotaSnapshot(t *testing.T) {
 	note := "no rollout jsonl under ~/.codex/sessions"
 	rows := []ProviderLimits{{

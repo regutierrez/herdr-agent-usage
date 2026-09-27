@@ -82,6 +82,7 @@ func expiredTokenRow(providerID, label string, token SubscriptionToken, nowMs in
 		Source:      token.Harness + " login",
 		FetchedAtMs: nowMs,
 		Note:        &note,
+		Unavailable: true,
 	}
 }
 
@@ -95,6 +96,7 @@ func fetchFailedRow(providerID, label string, token SubscriptionToken, err error
 		Source:      token.Harness + " login",
 		FetchedAtMs: nowMs,
 		Note:        &note,
+		Unavailable: true,
 	}
 }
 

@@ -676,7 +676,13 @@ func ompPiPaneBackendID(providerID string, pane OpenPaneSnapshot) string {
 
 func ompPiSubscriptionRoute(providerID string, pane OpenPaneSnapshot) (SubscriptionRoute, bool) {
 	backendID := ompPiPaneBackendID(providerID, pane)
-	credentialType := paneCredentialType(providerID, pane)
+	credentialType := ""
+	switch providerID {
+	case "omp":
+		credentialType = omp.CredentialType(backendID)
+	case "pi":
+		credentialType = omp.PiCredentialType(backendID)
+	}
 	return SubscriptionRouteForProviderAuth(backendID, credentialType)
 }
 
@@ -706,7 +712,7 @@ func paneSubscriptionRoute(providerID string, pane OpenPaneSnapshot) (Subscripti
 		return ompPiSubscriptionRoute(providerID, pane)
 	case "opencode":
 		backendID := opencodePaneBackendID(pane)
-		return SubscriptionRouteForProviderAuth(backendID, paneCredentialType(providerID, pane))
+		return SubscriptionRouteForProviderAuth(backendID, opencode.CredentialType(backendID))
 	default:
 		return SubscriptionRoute{}, false
 	}
